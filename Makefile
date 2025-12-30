@@ -1,5 +1,5 @@
 CC=clang
-CFLAGS=-std=c11 -Wall -Wextra -Wpedantic -Werror -g -Iinclude
+CFLAGS=-std=c11 -Wall -Wextra -Wpedantic -Werror -g -Iinclude -pthread
 BIN_DIR=build
 SRC_DIR=src
 
