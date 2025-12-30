@@ -7,6 +7,7 @@
 #include <signal.h>
 #include <string.h>
 #include <stdlib.h>
+#include <time.h>
 #include <ncurses.h>
 
 typedef struct {
@@ -16,6 +17,8 @@ typedef struct {
     pthread_mutex_t lock;
     msg_snapshot_t last;
     int have_last;
+
+    time_t start_time;
 } client_state_t;
 
 static void cleanup_curses(void) {
@@ -26,6 +29,35 @@ static void handle_signal(int sig) {
     (void)sig;
     cleanup_curses();
     _exit(130);
+}
+
+enum {
+    CP_BORDER = 1,
+    CP_SNAKE  = 2,
+    CP_FRUIT  = 3,
+    CP_TEXT   = 4
+};
+
+static void init_curses(void) {
+    initscr();
+    cbreak();
+    noecho();
+    keypad(stdscr, TRUE);
+    nodelay(stdscr, TRUE);
+    curs_set(0);
+
+    if (has_colors()) {
+        start_color();
+        use_default_colors();
+        init_pair(CP_BORDER, COLOR_CYAN, -1);
+        init_pair(CP_SNAKE,  COLOR_GREEN, -1);
+        init_pair(CP_FRUIT,  COLOR_RED, -1);
+        init_pair(CP_TEXT,   COLOR_WHITE, -1);
+    }
+
+    atexit(cleanup_curses);
+    signal(SIGINT, handle_signal);
+    signal(SIGTERM, handle_signal);
 }
 
 static void send_dir(int fd, dir_t d) {
@@ -59,10 +91,6 @@ static void *recv_thread(void *arg) {
             st->last = snap;
             st->have_last = 1;
             pthread_mutex_unlock(&st->lock);
-        } else if (hdr.resp == RESP_PONG) {
-            // ignore
-        } else {
-            // ignore unknown
         }
     }
 
@@ -70,20 +98,60 @@ static void *recv_thread(void *arg) {
     return NULL;
 }
 
-static void render_snapshot(const msg_snapshot_t *s) {
+static void draw_border(int top, int left, int w, int h) {
+    if (has_colors()) attron(COLOR_PAIR(CP_BORDER));
+
+    mvaddch(top, left, ACS_ULCORNER);
+    mvaddch(top, left + w + 1, ACS_URCORNER);
+    mvaddch(top + h + 1, left, ACS_LLCORNER);
+    mvaddch(top + h + 1, left + w + 1, ACS_LRCORNER);
+
+    for (int x = 0; x < w; x++) {
+        mvaddch(top, left + 1 + x, ACS_HLINE);
+        mvaddch(top + h + 1, left + 1 + x, ACS_HLINE);
+    }
+    for (int y = 0; y < h; y++) {
+        mvaddch(top + 1 + y, left, ACS_VLINE);
+        mvaddch(top + 1 + y, left + w + 1, ACS_VLINE);
+    }
+
+    if (has_colors()) attroff(COLOR_PAIR(CP_BORDER));
+}
+
+static void render_snapshot(const client_state_t *st, const msg_snapshot_t *s) {
     erase();
 
-    mvprintw(0, 0, "SCORE: %d | Controls: W A S D (no Enter), Q quit", s->score);
+    int rows, cols;
+    getmaxyx(stdscr, rows, cols);
 
     int top = 2;
-    for (int y = 0; y < s->h; y++) {
-        for (int x = 0; x < s->w; x++) {
-            char c = '.';
-            if (x == s->fruit_x && y == s->fruit_y) c = 'F';
-            if (x == s->snake_x && y == s->snake_y) c = 'S';
-            mvaddch(top + y, x, c);
-        }
+    int left = 2;
+
+    if (has_colors()) attron(COLOR_PAIR(CP_TEXT));
+    mvprintw(0, 2, "POS Snake | WASD move | Q quit");
+    int elapsed = (int)difftime(time(NULL), st->start_time);
+    mvprintw(1, 2, "Score: %d   Time: %ds   Map: %dx%d", s->score, elapsed, s->w, s->h);
+    if (has_colors()) attroff(COLOR_PAIR(CP_TEXT));
+
+    if (rows < top + s->h + 3 || cols < left + s->w + 3) {
+        if (has_colors()) attron(COLOR_PAIR(CP_TEXT));
+        mvprintw(3, 2, "Terminal too small. Resize window.");
+        if (has_colors()) attroff(COLOR_PAIR(CP_TEXT));
+        refresh();
+        return;
     }
+
+    draw_border(top, left, s->w, s->h);
+
+    // fruit
+    if (has_colors()) attron(COLOR_PAIR(CP_FRUIT));
+    mvaddch(top + 1 + s->fruit_y, left + 1 + s->fruit_x, 'o');
+    if (has_colors()) attroff(COLOR_PAIR(CP_FRUIT));
+
+    // snake head
+    if (has_colors()) attron(COLOR_PAIR(CP_SNAKE));
+    mvaddch(top + 1 + s->snake_y, left + 1 + s->snake_x, '@');
+    if (has_colors()) attroff(COLOR_PAIR(CP_SNAKE));
 
     refresh();
 }
@@ -91,23 +159,14 @@ static void render_snapshot(const msg_snapshot_t *s) {
 int main(void) {
     int fd = ipc_client_connect(SNAKE_SOCK_PATH);
 
-    // ncurses init: immediate key input, stable screen rendering
-    initscr();
-    cbreak();              // no Enter required
-    noecho();              // do not echo keys
-    keypad(stdscr, TRUE);
-    nodelay(stdscr, TRUE); // getch() non-blocking
-    curs_set(0);           // hide cursor
-
-    atexit(cleanup_curses);
-    signal(SIGINT, handle_signal);
-    signal(SIGTERM, handle_signal);
+    init_curses();
 
     client_state_t st;
     memset(&st, 0, sizeof(st));
     st.fd = fd;
     st.running = 1;
     st.have_last = 0;
+    st.start_time = time(NULL);
     pthread_mutex_init(&st.lock, NULL);
 
     pthread_t th_recv;
@@ -119,7 +178,7 @@ int main(void) {
     }
 
     while (st.running) {
-        int ch = getch(); // non-blocking
+        int ch = getch();
         if (ch == 'w' || ch == 'W') send_dir(fd, DIR_UP);
         else if (ch == 's' || ch == 'S') send_dir(fd, DIR_DOWN);
         else if (ch == 'a' || ch == 'A') send_dir(fd, DIR_LEFT);
@@ -136,14 +195,13 @@ int main(void) {
         pthread_mutex_unlock(&st.lock);
 
         if (have) {
-            render_snapshot(&snap);
+            render_snapshot(&st, &snap);
         }
 
-        usleep(20000); // ~50 FPS cap
+        usleep(20000);
     }
 
     pthread_join(th_recv, NULL);
-
     pthread_mutex_destroy(&st.lock);
     close(fd);
 
