@@ -7,8 +7,10 @@ COMMON_SRC=$(SRC_DIR)/ipc.c $(SRC_DIR)/world.c $(SRC_DIR)/snake.c $(SRC_DIR)/gam
 CLIENT_SRC=$(SRC_DIR)/client_main.c $(SRC_DIR)/render.c $(SRC_DIR)/input.c
 SERVER_SRC=$(SRC_DIR)/server_main.c
 
+CLIENT_LIBS=-lncurses
+
 client: $(BIN_DIR) $(COMMON_SRC) $(CLIENT_SRC)
-	$(CC) $(CFLAGS) -o $(BIN_DIR)/client $(COMMON_SRC) $(CLIENT_SRC)
+	$(CC) $(CFLAGS) -o $(BIN_DIR)/client $(COMMON_SRC) $(CLIENT_SRC) $(CLIENT_LIBS)
 
 server: $(BIN_DIR) $(COMMON_SRC) $(SERVER_SRC)
 	$(CC) $(CFLAGS) -o $(BIN_DIR)/server $(COMMON_SRC) $(SERVER_SRC)
@@ -20,4 +22,3 @@ $(BIN_DIR):
 
 clean:
 	rm -rf $(BIN_DIR)
-
