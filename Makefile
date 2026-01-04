@@ -1,24 +1,25 @@
-CC=clang
-CFLAGS=-std=c11 -Wall -Wextra -Wpedantic -Werror -g -Iinclude -pthread
-BIN_DIR=build
-SRC_DIR=src
+CC ?= cc
 
-COMMON_SRC=$(SRC_DIR)/ipc.c $(SRC_DIR)/world.c $(SRC_DIR)/snake.c $(SRC_DIR)/game.c $(SRC_DIR)/util.c
-CLIENT_SRC=$(SRC_DIR)/client_main.c $(SRC_DIR)/render.c $(SRC_DIR)/input.c
-SERVER_SRC=$(SRC_DIR)/server_main.c
+CFLAGS ?= -std=c11 -Wall -Wextra -Wpedantic -Werror -g -Iinclude -pthread
+LDLIBS_CLIENT ?= -lncurses
 
-CLIENT_LIBS=-lncurses
+BUILD_DIR := build
 
-client: $(BIN_DIR) $(COMMON_SRC) $(CLIENT_SRC)
-	$(CC) $(CFLAGS) -o $(BIN_DIR)/client $(COMMON_SRC) $(CLIENT_SRC) $(CLIENT_LIBS)
+COMMON_SRC := src/ipc.c src/world.c src/snake.c src/game.c src/util.c
+CLIENT_SRC := $(COMMON_SRC) src/client_main.c src/render.c src/input.c
+SERVER_SRC := $(COMMON_SRC) src/server_main.c
 
-server: $(BIN_DIR) $(COMMON_SRC) $(SERVER_SRC)
-	$(CC) $(CFLAGS) -o $(BIN_DIR)/server $(COMMON_SRC) $(SERVER_SRC)
+.PHONY: all client server clean
 
 all: client server
 
-$(BIN_DIR):
-	mkdir -p $(BIN_DIR)
+client:
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -o $(BUILD_DIR)/client $(CLIENT_SRC) $(LDLIBS_CLIENT)
+
+server:
+	@mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -o $(BUILD_DIR)/server $(SERVER_SRC)
 
 clean:
-	rm -rf $(BIN_DIR)
+	rm -rf $(BUILD_DIR)

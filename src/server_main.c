@@ -6,6 +6,16 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <time.h>
+#include <errno.h>
+
+static void sleep_ms(long ms) {
+    if (ms <= 0) return;
+    struct timespec ts;
+    ts.tv_sec = ms / 1000;
+    ts.tv_nsec = (ms % 1000) * 1000000L;
+    while (nanosleep(&ts, &ts) == -1 && errno == EINTR) {}
+}
+
 #include <string.h>
 #include <stdint.h>
 
@@ -262,7 +272,7 @@ static void *game_thread(void *arg) {
     server_state_t *st = (server_state_t *)arg;
 
     while (st->running) {
-        usleep(120000);
+        sleep_ms(120);
 
         pthread_mutex_lock(&st->lock);
 
