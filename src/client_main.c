@@ -392,7 +392,10 @@ static int run_one_game(void) {
             go_menu = 1;
             st.running = 0;
             break;
-        } else if (ch == 'q' || ch == 'Q') {
+        } else if (ch == 'p' || ch == 'P') {
+            send_cmd(fd, CMD_TOGGLE_PAUSE, 0);
+        }
+        else if (ch == 'q' || ch == 'Q') {
             send_cmd(fd, CMD_QUIT, 0);
             go_menu = 0;
             st.running = 0;

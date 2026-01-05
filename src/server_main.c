@@ -44,6 +44,8 @@ typedef struct {
     game_mode_t mode;
     int duration_s;
     time_t game_start_ts;
+    time_t pause_start_ts;
+    int paused_total_s;
 
     msg_point_t *buf;
     int cap;
@@ -152,6 +154,8 @@ static void reset_game(server_state_t *st) {
 
     st->score = 0;
     st->paused = 0;
+    st->pause_start_ts = 0;
+    st->paused_total_s = 0;
     st->gameover = 0;
     st->grow_pending = 0;
 
@@ -185,11 +189,17 @@ static void reset_game(server_state_t *st) {
 
 static int elapsed_s(const server_state_t *st) {
     time_t now = time(NULL);
-    double d = difftime(now, st->game_start_ts);
-    if (d < 0) d = 0;
-    return (int)d;
-}
 
+    int extra_pause = 0;
+    if (st->paused && st->pause_start_ts != 0) {
+        extra_pause = (int)difftime(now, st->pause_start_ts);
+        if (extra_pause < 0) extra_pause = 0;
+    }
+
+    int e = (int)difftime(now, st->game_start_ts) - st->paused_total_s - extra_pause;
+    if (e < 0) e = 0;
+    return e;
+}
 static int time_left_s(const server_state_t *st) {
     if (st->mode != MODE_TIMED) return -1;
     int left = st->duration_s - elapsed_s(st);
@@ -295,6 +305,8 @@ static int wait_config_and_start(server_state_t *st) {
     // defaults
     st->session_active = 0;
     st->paused = 0;
+    st->pause_start_ts = 0;
+    st->paused_total_s = 0;
     st->gameover = 0;
 
     st->mode = MODE_STANDARD;
@@ -411,7 +423,19 @@ int main(void) {
             }
 
             if (cmd.cmd == CMD_TOGGLE_PAUSE) {
-                if (!st.gameover) st.paused = !st.paused;
+                if (!st.gameover) {
+                    if (!st.paused) {
+                        st.paused = 1;
+                        st.pause_start_ts = time(NULL);
+                    } else {
+                        st.paused = 0;
+                        if (st.pause_start_ts != 0) {
+                            int d = (int)difftime(time(NULL), st.pause_start_ts);
+                            if (d > 0) st.paused_total_s += d;
+                            st.pause_start_ts = 0;
+                        }
+                    }
+                }
                 pthread_mutex_unlock(&st.lock);
                 continue;
             }
