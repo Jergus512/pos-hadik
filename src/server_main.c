@@ -1,12 +1,14 @@
 #include "ipc.h"
 #include "protocol.h"
 
-#include <pthread.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <time.h>
 #include <errno.h>
+#include <pthread.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <unistd.h>   // close(), unlink()
 
 static void sleep_ms(long ms) {
     if (ms <= 0) return;
@@ -16,8 +18,6 @@ static void sleep_ms(long ms) {
     while (nanosleep(&ts, &ts) == -1 && errno == EINTR) {}
 }
 
-#include <string.h>
-#include <stdint.h>
 
 #define MIN_W 10
 #define MIN_H 10

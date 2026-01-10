@@ -1,25 +1,27 @@
-CC ?= cc
+CC      := cc
+CFLAGS  := -std=c11 -Wall -Wextra -Wpedantic -Werror -g -Iinclude -pthread
+LDFLAGS :=
+LDLIBS_CLIENT := -lncurses
 
-CFLAGS ?= -std=c11 -Wall -Wextra -Wpedantic -Werror -g -Iinclude -pthread
-LDLIBS_CLIENT ?= -lncurses
+BUILD := build
+CLIENT := $(BUILD)/client
+SERVER := $(BUILD)/server
 
-BUILD_DIR := build
+CLIENT_SRC := src/ipc.c src/client_main.c
+SERVER_SRC := src/ipc.c src/server_main.c
 
-COMMON_SRC := src/ipc.c src/world.c src/snake.c src/game.c src/util.c
-CLIENT_SRC := $(COMMON_SRC) src/client_main.c src/render.c src/input.c
-SERVER_SRC := $(COMMON_SRC) src/server_main.c
-
-.PHONY: all client server clean
+.PHONY: all clean client server
 
 all: client server
 
-client:
-	@mkdir -p $(BUILD_DIR)
-	$(CC) $(CFLAGS) -o $(BUILD_DIR)/client $(CLIENT_SRC) $(LDLIBS_CLIENT)
+$(BUILD):
+	mkdir -p $(BUILD)
 
-server:
-	@mkdir -p $(BUILD_DIR)
-	$(CC) $(CFLAGS) -o $(BUILD_DIR)/server $(SERVER_SRC)
+client: $(BUILD)
+	$(CC) $(CFLAGS) -o $(CLIENT) $(CLIENT_SRC) $(LDFLAGS) $(LDLIBS_CLIENT)
+
+server: $(BUILD)
+	$(CC) $(CFLAGS) -o $(SERVER) $(SERVER_SRC) $(LDFLAGS)
 
 clean:
-	rm -rf $(BUILD_DIR)
+	rm -rf $(BUILD)

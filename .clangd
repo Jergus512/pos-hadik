@@ -1,0 +1,7 @@
+CompileFlags:
+  Add: [
+    -std=c11,
+    -Iinclude,
+    -D_DEFAULT_SOURCE,
+    -pthread
+  ]
