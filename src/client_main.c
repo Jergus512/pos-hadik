@@ -10,9 +10,12 @@
 #include <string.h>
 #include <stdlib.h>
 #include <ncurses.h>
+#include <stdint.h>
+#include <errno.h>
 
 #include <sys/ioctl.h>
-#include <termios.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #define MAX_POINTS 4096
 #define OB_W 45
@@ -293,11 +296,53 @@ static int read_int_range(const char *prompt, int min, int max) {
     }
 }
 
+/* ===================== fork+exec server management ===================== */
+
+static pid_t server_pid = -1;
+
+static int start_server_process(void) {
+    // ak ostal socket po páde, radšej ho odstráň
+    unlink(SNAKE_SOCK_PATH);
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        perror("fork");
+        return -1;
+    }
+
+    if (pid == 0) {
+        // child -> spustí server
+        execl("./build/server", "server", NULL);
+        perror("exec ./build/server");
+        _exit(1);
+    }
+
+    // parent -> klient
+    server_pid = pid;
+
+    // počkáme na socket (max ~2s)
+    for (int i = 0; i < 20; i++) {
+        if (access(SNAKE_SOCK_PATH, F_OK) == 0) return 0;
+        usleep(100000);
+    }
+
+    fprintf(stderr, "Server did not create socket in time: %s\n", SNAKE_SOCK_PATH);
+    return -1;
+}
+
+static void stop_server_process(void) {
+    if (server_pid > 0) {
+        (void)waitpid(server_pid, NULL, 0);
+        server_pid = -1;
+    }
+}
+
+/* ======================================================================= */
+
 static int run_one_game(void) {
     int cols, rows;
     term_size(&cols, &rows);
 
-    // map must fit into: need cols >= left + w + 3, rows >= top + h + 3, with left=2 top=2
     int max_w_term = cols - 5;
     int max_h_term = rows - 5;
 
@@ -336,6 +381,13 @@ static int run_one_game(void) {
         h = read_int_range(ph, 10, hmax);
     }
 
+    // ========== NOVÁ HRA -> klient spustí server ==========
+    if (start_server_process() != 0) {
+        fprintf(stderr, "Failed to start server.\n");
+        return 2;
+    }
+    // ======================================================
+
     int fd = ipc_client_connect(SNAKE_SOCK_PATH);
 
     send_cmd(fd, CMD_SET_MODE, mode_in);
@@ -364,7 +416,8 @@ static int run_one_game(void) {
             endwin();
             fprintf(stderr, "Failed to load obstacle file: %s\n", OB_FILE);
             close(fd);
-            return 1;
+            stop_server_process();
+            return 2;
         }
     }
 
@@ -374,13 +427,15 @@ static int run_one_game(void) {
         perror("pthread_create(recv)");
         close(fd);
         free(st.obst);
-        return 1;
+        stop_server_process();
+        return 2;
     }
 
     int go_menu = 0;
 
     while (st.running) {
         int ch = getch();
+
         if (ch == 'w' || ch == 'W') send_cmd(fd, CMD_DIR, DIR_UP);
         else if (ch == 's' || ch == 'S') send_cmd(fd, CMD_DIR, DIR_DOWN);
         else if (ch == 'a' || ch == 'A') send_cmd(fd, CMD_DIR, DIR_LEFT);
@@ -388,14 +443,12 @@ static int run_one_game(void) {
         else if (ch == 'p' || ch == 'P') send_cmd(fd, CMD_TOGGLE_PAUSE, 0);
         else if (ch == 'r' || ch == 'R') send_cmd(fd, CMD_RESTART, 0);
         else if (ch == 'm' || ch == 'M') {
-            send_cmd(fd, CMD_BACK_TO_MENU, 0);
+            // aby server zanikol a ostal iba klient v menu:
+            send_cmd(fd, CMD_QUIT, 0);
             go_menu = 1;
             st.running = 0;
             break;
-        } else if (ch == 'p' || ch == 'P') {
-            send_cmd(fd, CMD_TOGGLE_PAUSE, 0);
-        }
-        else if (ch == 'q' || ch == 'Q') {
+        } else if (ch == 'q' || ch == 'Q') {
             send_cmd(fd, CMD_QUIT, 0);
             go_menu = 0;
             st.running = 0;
@@ -428,6 +481,10 @@ static int run_one_game(void) {
     close(fd);
 
     endwin();
+
+    // ========== po skončení hry server musí zaniknúť ==========
+    stop_server_process();
+    // =========================================================
 
     return go_menu ? 0 : 2;
 }
