@@ -485,6 +485,7 @@ static int run_one_game(void) {
     // ========== po skončení hry server musí zaniknúť ==========
     stop_server_process();
     // =========================================================
+    //
 
     return go_menu ? 0 : 2;
 }
