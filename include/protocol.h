@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+//prikazy od klienta
 typedef enum {
     CMD_PING = 1,
     CMD_QUIT = 2,
@@ -16,6 +17,7 @@ typedef enum {
     CMD_BACK_TO_MENU = 10  // end session, return to menu
 } command_t;
 
+//odpovede servera
 typedef enum {
     RESP_PONG     = 100,
     RESP_BYE      = 101,
@@ -39,6 +41,7 @@ typedef enum {
     MODE_TIMED = 2
 } game_mode_t;
 
+//správa klient → server
 typedef struct {
     int32_t cmd;
     int32_t arg;
@@ -48,6 +51,7 @@ typedef struct {
     int32_t resp;
 } msg_resp_t;
 
+//správy server → klient
 typedef struct {
     int32_t w, h;
     int32_t score;
